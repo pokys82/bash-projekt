@@ -1,0 +1,286 @@
+#!/bin/sh
+
+export POSIXLY_CORRECT=yes
+
+# variables to check params
+n_passed=1
+i_passed=1
+dir_passed=1
+
+# variables to store amounts of files of given size
+B_hun=0
+KiB=0
+KiB_ten=0
+KiB_hun=0
+MiB=0
+MiB_ten=0
+MiB_hun=0
+GiB=0
+GiB_g=0
+
+# checking redirection of output
+if [ -t 1  ]
+    then
+    redirected=1
+else
+    redirected=0
+fi
+
+# checking terminal
+test -t        
+if [ "$?" = 0 ]                                 # if == 0, script does run in terminal
+    then
+    output=0                                    # if output=1 then we will print differently
+    else
+    output=1
+fi
+
+# checking parametres
+while [ "$1" != "" ]; do
+    if  test -d "$1"  
+        then 
+        directory=$1                             # checking for passed directory
+        dir_passed=0
+    elif [ "$1" = "-n" ]
+        then
+        n_passed=0 
+    elif [ "$1" = "-i" ]
+        then
+        i_passed=0
+        skip="$2"
+        shift                                   # echo "-i was passed, regular expres. to skip = $skip"
+    elif [ "${1:0:2}" = "-i" ]                  # checking for parametre starting with -i*   
+        then 
+        i_passed=0
+        skip="${1:2}"
+    else
+        echo "Error, wrong arguments" 1>&2
+        exit 1
+    fi
+    shift
+done
+
+# if there was no directory, we will search CWD
+if [ $dir_passed -eq "1" ]
+    then
+    directory=$PWD
+fi
+
+dir_counter=0
+file_counter=0
+
+# counting files and dir
+counter(){
+
+for f in $1
+    do
+        if test -d "$f"
+            then
+            dir_counter=$((dir_counter+1))
+        elif test -f "$f"
+            then    
+            file_counter=$((file_counter+1))
+            file_size=$(wc -c "$f" | awk '{print $1}')                                  # file size
+            if [ "$file_size" -lt 100 ]                                                 # < 100B
+                then
+                B_hun=$((B_hun+1))      
+            elif [ "$file_size" -ge 100 ] && [ "$file_size" -lt 1024 ]                  # < 1kiB
+                then
+                KiB=$((KiB+1))
+            elif [ "$file_size" -ge 1024 ] && [ "$file_size" -lt 10240 ]                # <10kiB
+                then
+                KiB_ten=$((KiB_ten+1))
+            elif [ "$file_size" -ge 10240 ] && [ "$file_size" -lt 102400 ]              # <100kiB
+                then
+                KiB_hun=$((KiB_hun+1))
+            elif [ "$file_size" -ge 102400 ] && [ "$file_size" -lt 1048576 ]            # <1MiB
+                then
+                MiB=$((MiB+1))
+            elif [ "$file_size" -ge 1048576 ] && [ "$file_size" -lt 10485760 ]          # <10 MiB
+                then
+                MiB_ten=$((MiB_ten+1))
+            elif [ "$file_size" -ge 10485760 ] && [ "$file_size" -lt 104857600 ]        # <100 MiB
+                then  
+                MiB_hun=$((MiB_hun+1))
+            elif [ "$file_size" -ge 104857600 ] && [ "$file_size" -lt 1073741824 ]      # <1 GiB
+                then
+                GiB=$((GiB+1))
+            else
+                GiB_g=$((GiB_g+1))                                                       # >=1 GiB
+            fi
+        fi
+    done
+    if [ "$dir_counter" = 0 ]                                                 # trying to search non existing directory
+        then
+        echo "Error, no directory was found" 1>&2
+        exit 1
+    fi
+}
+
+if [ "$i_passed" = 1 ]
+    then
+    x=$(find "$directory" -name "*" 2>/dev/null)
+    if [ "$?" = 1 ]
+        then
+        echo "Error, permission denied"
+        exit 1
+    fi
+    counter "$x"
+elif [ "$i_passed" != 1 ]
+    then
+    base_dir=$(basename "$directory")
+    if [ "$skip" != "$base_dir" ]
+        then
+        x=$(find "$directory" -name "*" -not -path "$skip" ! -name "*.$skip" ! -name "$skip" ! -name "$skip.*" 2>/dev/null)   # skip files and directories
+        if [ "$?" = 1 ]
+            then
+            echo "Error, permission denied"
+            exit 1
+        fi
+        counter "$x"
+    else
+        echo "Error, skipping root directory" 1>&2
+        exit 1
+    fi
+fi
+
+print_func() {
+    value="$1"
+    data="$2"
+    if [ "$data" = 1 ]
+        then
+        printf "  <100 B  : " 
+    elif [ "$data" = 2 ]
+        then 
+        printf "  <1 KiB  : "
+    elif [ "$data" = 3 ]
+        then 
+        printf "  <10 KiB : "
+    elif [ "$data" = 4 ]
+        then 
+        printf "  <100 KiB: "
+    elif [ "$data" = 5 ]
+        then 
+        printf "  <1 MiB  : " 
+    elif [ "$data" = 6 ]
+        then 
+        printf "  <10 MiB : "
+    elif [ "$data" = 7 ]
+        then 
+        printf "  <100 MiB: "
+    elif [ "$data" = 8 ]
+        then 
+        printf "  <1 GiB  : "
+    else
+        printf "  >=1 GiB : "
+    fi
+
+    while [ "$value" -gt 0 ]
+    do
+    printf "#"
+    value=$(($value-1))
+    done
+    printf "\n"
+}
+
+if [ "$n_passed" = 0 ]
+    then
+    max_count=$B_hun
+    if [ $max_count -lt $KiB ]
+        then
+        max_count=$KiB
+    elif [ $max_count -lt $KiB_ten ]
+        then 
+        max_count=$KiB_ten
+    elif [ $max_count -lt $KiB_hun ]
+        then 
+        max_count=$KiB_hun
+    elif [ $max_count -lt $MiB ]    
+        then
+        max_count=$MiB
+    elif [ $max_count -lt $MiB_ten ]
+        then
+        max_count=$MiB_ten
+    elif [ $max_count -lt $MiB_hun ]
+        then
+        max_count=$MiB_hun
+    elif [ $max_count -lt $GiB ]
+        then    
+        max_count=$GiB
+    elif [ $max_count -lt $GiB_g ]
+        then
+        max_count=$GiB_g
+    fi
+fi
+
+normalized(){
+line_size=$(($1-13))
+max_count=$B_hun
+koeficient=$(echo "scale=2; $line_size/$B_hun" | bc)
+for i in $B_hun $KiB $KiB_ten $KiB_hun $MiB $MiB_ten $MiB_hun $GiB $GiB_g
+        do
+        if [ $i -gt $max_count ]
+            then
+            max_count=$i
+            koeficient=$(echo "scale=2; $line_size/$i" | bc)
+        fi
+        done
+
+if [ $max_count -le $line_size ]
+    then
+    print_func $B_hun 1                            
+    print_func $KiB 2                            
+    print_func $KiB_ten 3                       
+    print_func $KiB_hun 4                            
+    print_func $MiB 5                            
+    print_func $MiB_ten 6                            
+    print_func $MiB_hun 7                            
+    print_func $GiB 8                            
+    print_func $GiB_g 9
+else
+    position=1
+    for i in $B_hun $KiB $KiB_ten $KiB_hun $MiB $MiB_ten $MiB_hun $GiB $GiB_g
+            do
+            if [ $i != $max_count ]
+                then
+                i=$(echo "scale=2; $koeficient*$i" | bc)
+                i=$(echo "($i+0.5)/1" |bc)  
+                print_func "$i" "$position"
+                position=$(($position +1))
+            else
+                print_func "$line_size" "$position"
+                position=$(($position +1))
+            fi
+            done
+fi
+}
+
+if [ "$redirected" = 0 ]
+    then
+    echo "Root directory: $directory"
+    echo "Directories: $dir_counter"
+    echo "All files: $file_counter"
+    echo "File size histogram:"
+    line_size=80
+    normalized $line_size
+else 
+    echo "Root directory: $directory"
+    echo "Directories: $dir_counter"
+    echo "All files: $file_counter"
+    echo "File size histogram:"
+        if [ "$n_passed" = 1 ]
+            then
+            print_func $B_hun 1    
+            print_func $KiB 2                           
+            print_func $KiB_ten 3                            
+            print_func $KiB_hun 4                            
+            print_func $MiB 5                            
+            print_func $MiB_ten 6                            
+            print_func $MiB_hun 7                            
+            print_func $GiB 8                            
+            print_func $GiB_g 9                            
+        else
+            line_size=$(tput cols)
+            normalized "$line_size"
+        fi
+fi
